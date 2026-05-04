@@ -1,23 +1,28 @@
-require('dotenv').config();
 const { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('baileys');
 const { Boom } = require('@hapi/boom');
 const { createClient } = require('@supabase/supabase-js');
 const Groq = require('groq-sdk');
 
+// Hardcoded config (temporary - move to env later)
+const SUPABASE_URL = 'https://daekymdalygrcmzcjuev.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_TpiomOGFGRc_oDAQIQ3-1A_x4T6HOxD';
+const GROQ_API_KEY = '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';
+const PHONE_NUMBER = '2349138153604';
+
 // Setup Supabase
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Setup Groq AI
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const groq = new Groq({ apiKey: GROQ_API_KEY });
 
 // Your phone number
-const OWNER_NUMBER = process.env.BOT_OWNER_NUMBER + '@s.whatsapp.net';
+const OWNER_NUMBER = PHONE_NUMBER + '@s.whatsapp.net';
 
 // Track messages to avoid duplicates and loops
 const processedMessages = {};
-const COOLDOWN_MS = 15000; // 15 seconds cooldown per contact
+const COOLDOWN_MS = 15000;
 
-// AI Personality - GENDER NEUTRAL
+// AI Personality - ULTIMATE VERSION
 const AI_PERSONALITY = `You are the AI twin of a Nigerian founder & developer based in Abuja. Your name is flexible—use whatever the contact calls him: David, Emmanuel, Kennedy, Wax, Wazi, Wazobia, or just "me" if no specific name is known. You sound EXACTLY like him.
 
 ## CORE IDENTITY
@@ -104,25 +109,35 @@ async function startBot() {
         }
     });
 
+    // AUTO PAIRING CODE
+    if (!sock.authState.creds.registered) {
+        console.log('Requesting pairing code for', PHONE_NUMBER);
+        try {
+            const code = await sock.requestPairingCode(PHONE_NUMBER);
+            console.log('\n========================================');
+            console.log('YOUR PAIRING CODE:', code);
+            console.log('========================================\n');
+            console.log('Go to WhatsApp > Linked Devices > Link a Device');
+            console.log('Tap "Link with Phone Number" and enter the code.\n');
+        } catch (err) {
+            console.error('Pairing code error:', err.message);
+        }
+    }
+
     // Handle incoming messages
     sock.ev.on('messages.upsert', async function(msg) {
         const message = msg.messages[0];
         
-        // Ignore self messages
         if (message.key.fromMe) return;
-        
-        // Ignore status broadcasts
         if (message.key.remoteJid === 'status@broadcast') return;
 
         const sender = message.key.remoteJid;
 
-        // IGNORE NEWSLETTERS AND CHANNELS
         if (sender.includes('@newsletter')) {
             console.log('📢 Ignored newsletter: ' + sender);
             return;
         }
 
-        // ACCEPT both @s.whatsapp.net and @lid
         if (!sender.includes('@s.whatsapp.net') && !sender.includes('@lid')) {
             console.log('❓ Ignored unknown sender: ' + sender);
             return;
@@ -134,7 +149,6 @@ async function startBot() {
 
         if (!text) return;
 
-        // DEDUPLICATION - Skip if same sender + same text within cooldown
         const msgKey = sender + ':::' + text.trim().toLowerCase();
         const now = Date.now();
         if (processedMessages[msgKey] && (now - processedMessages[msgKey]) < COOLDOWN_MS) {
@@ -145,7 +159,6 @@ async function startBot() {
 
         console.log('📩 ' + sender + ': ' + text);
 
-        // DETECT AND LIMIT AUTOMATED MESSAGES
         const isAutomated = /reply with.*[0-9]|press [0-9]|text [0-9] to|opt out|unsubscribe|please reply with/i.test(text);
         if (isAutomated) {
             const autoKey = 'auto_warned_' + sender;
@@ -159,8 +172,6 @@ async function startBot() {
             return;
         }
 
-        // AVOID REPLYING TO ECHOES (when someone repeats the bot's reply)
-        // Check if this text was recently sent by the bot
         const echoKey = 'bot_sent_' + text.trim().toLowerCase();
         if (processedMessages[echoKey] && (now - processedMessages[echoKey]) < 30000) {
             console.log('🔁 Echo detected - not replying: ' + sender);
@@ -168,7 +179,6 @@ async function startBot() {
         }
 
         try {
-            // Save incoming message to Supabase
             await supabase.from('messages').insert({
                 sender: sender,
                 text: text,
@@ -176,15 +186,13 @@ async function startBot() {
                 created_at: new Date().toISOString()
             });
 
-            // Get last 20 messages with this person (reduced from 30)
             const { data: history } = await supabase
                 .from('messages')
                 .select('sender, text, direction')
                 .or('sender.eq.' + sender + ',sender.eq.' + OWNER_NUMBER)
                 .order('created_at', { ascending: false })
-                .limit(20);
+                .limit(30);
 
-            // Build conversation context
             let context = '';
             if (history && history.length > 0) {
                 context = history.reverse().map(function(m) {
@@ -193,27 +201,21 @@ async function startBot() {
                 }).join('\n');
             }
 
-            // Get AI response from Groq
             const aiResponse = await groq.chat.completions.create({
                 model: 'llama-3.3-70b-versatile',
                 messages: [
                     { role: 'system', content: AI_PERSONALITY },
                     { role: 'user', content: 'Recent conversation:\n' + context + '\n\nContact just said: "' + text + '"\n\nReply as the AI:' }
                 ],
-                max_tokens: 100,
+                max_tokens: 150,
                 temperature: 0.7
             });
 
             const reply = aiResponse.choices[0].message.content;
 
-            // Track this reply to detect echoes
-            processedMessages['bot_sent_' + reply.trim().toLowerCase()] = now;
-
-            // Send reply
             await sock.sendMessage(sender, { text: reply });
             console.log('🤖 Reply to ' + sender + ': ' + reply);
 
-            // Save outgoing message to Supabase
             await supabase.from('messages').insert({
                 sender: OWNER_NUMBER,
                 text: reply,
