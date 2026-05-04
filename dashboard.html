@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp AI Bot - Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            padding: 16px;
+            min-height: 100vh;
+        }
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 1px solid #222;
+            margin-bottom: 20px;
+        }
+        .header h1 { font-size: 24px; color: #25D366; }
+        .header p { color: #888; font-size: 13px; margin-top: 5px; }
+        
+        .card {
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 16px;
+            border: 1px solid #2a2a2a;
+        }
+        .card h3 { font-size: 15px; margin-bottom: 12px; color: #ccc; }
+        
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .toggle-label { font-size: 16px; font-weight: 600; }
+        .toggle {
+            width: 56px; height: 30px;
+            background: #333;
+            border-radius: 15px;
+            position: relative;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .toggle.active { background: #25D366; }
+        .toggle::after {
+            content: '';
+            position: absolute;
+            width: 26px; height: 26px;
+            background: white;
+            border-radius: 50%;
+            top: 2px; left: 2px;
+            transition: 0.3s;
+        }
+        .toggle.active::after { left: 28px; }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-online { background: #25D366; color: #000; }
+        .status-offline { background: #ff4444; color: #fff; }
+        
+        select, textarea {
+            width: 100%;
+            padding: 12px;
+            background: #222;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            margin-top: 8px;
+            font-family: inherit;
+        }
+        textarea { resize: vertical; min-height: 100px; }
+        
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: #25D366;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .btn:active { opacity: 0.8; }
+        .btn-sm {
+            width: auto;
+            padding: 8px 16px;
+            font-size: 12px;
+            background: #333;
+            color: #fff;
+        }
+        
+        .msg-log {
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+        .msg-item {
+            padding: 8px;
+            border-bottom: 1px solid #222;
+        }
+        .msg-in { color: #4da6ff; }
+        .msg-out { color: #25D366; }
+        .msg-time { color: #666; font-size: 10px; }
+        
+        .bottom-nav {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: #1a1a1a;
+            display: flex;
+            border-top: 1px solid #2a2a2a;
+            padding: 8px;
+        }
+        .nav-btn {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            color: #888;
+            font-size: 11px;
+            border: none;
+            background: none;
+            cursor: pointer;
+        }
+        .nav-btn.active { color: #25D366; font-weight: 700; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>🤖 WhatsApp AI Bot</h1>
+        <p>Dashboard v1.0</p>
+    </div>
+
+    <!-- Status Card -->
+    <div class="card">
+        <div class="toggle-container">
+            <div>
+                <span class="toggle-label">Bot Status</span>
+                <br>
+                <span id="statusText" class="status-badge status-offline">OFFLINE</span>
+            </div>
+            <div class="toggle" id="botToggle" onclick="toggleBot()"></div>
+        </div>
+    </div>
+
+    <!-- Personality Card -->
+    <div class="card">
+        <h3>🎭 Personality Mode</h3>
+        <select id="personalitySelect" onchange="changePersonality()">
+            <option value="funny">😂 Funny Mode</option>
+            <option value="savage">😈 Savage Mode</option>
+            <option value="professional">💼 Professional Mode</option>
+            <option value="romantic">❤️ Romantic Mode</option>
+            <option value="neutral">😐 Neutral (Default)</option>
+            <option value="custom">✏️ Custom Prompt</option>
+        </select>
+        <textarea id="customPrompt" placeholder="Write your custom AI personality here..." style="display:none;"></textarea>
+        <button class="btn" onclick="savePersonality()">💾 Save Personality</button>
+    </div>
+
+    <!-- Conversation Log -->
+    <div class="card">
+        <h3>📝 Recent Conversations</h3>
+        <div class="msg-log" id="msgLog">
+            <p style="color:#666;">Loading messages...</p>
+        </div>
+        <button class="btn btn-sm" onclick="loadMessages()" style="margin-top:8px;">🔄 Refresh</button>
+    </div>
+
+    <!-- Settings Card -->
+    <div class="card">
+        <h3>⚙️ Quick Settings</h3>
+        <p style="font-size:12px;color:#888;">Bot Owner: <strong id="ownerDisplay">Loading...</strong></p>
+        <p style="font-size:12px;color:#888;">Groq Model: <strong>llama-3.3-70b-versatile</strong></p>
+    </div>
+
+    <div style="height:70px;"></div>
+
+    <div class="bottom-nav">
+        <button class="nav-btn active">🏠 Home</button>
+        <button class="nav-btn">💬 Chats</button>
+        <button class="nav-btn">⚙️ Settings</button>
+        <button class="nav-btn">📊 Stats</button>
+    </div>
+
+    <script>
+        // Supabase config - Replace with your actual keys
+        const SUPABASE_URL = 'https://daekymdalygrcmzcjuev.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_TpiomOGFGRc_oDAQIQ3-1A_x4T6HOxD';
+
+        // Load Supabase
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+        script.onload = function() {
+            window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            initDashboard();
+        };
+        document.head.appendChild(script);
+
+        async function initDashboard() {
+            await loadBotStatus();
+            await loadPersonality();
+            await loadMessages();
+            document.getElementById('ownerDisplay').textContent = '2349138153604';
+        }
+
+        async function loadBotStatus() {
+            const { data } = await supabaseClient
+                .from('bot_settings')
+                .select('bot_enabled')
+                .eq('id', 1)
+                .single();
+            
+            const isOn = data?.bot_enabled || false;
+            updateToggleUI(isOn);
+        }
+
+        function updateToggleUI(isOn) {
+            const toggle = document.getElementById('botToggle');
+            const statusText = document.getElementById('statusText');
+            
+            if (isOn) {
+                toggle.classList.add('active');
+                statusText.textContent = 'ONLINE';
+                statusText.className = 'status-badge status-online';
+            } else {
+                toggle.classList.remove('active');
+                statusText.textContent = 'OFFLINE';
+                statusText.className = 'status-badge status-offline';
+            }
+        }
+
+        async function toggleBot() {
+            const { data } = await supabaseClient
+                .from('bot_settings')
+                .select('bot_enabled')
+                .eq('id', 1)
+                .single();
+            
+            const newState = !(data?.bot_enabled || false);
+            
+            await supabaseClient
+                .from('bot_settings')
+                .update({ bot_enabled: newState, updated_at: new Date().toISOString() })
+                .eq('id', 1);
+            
+            updateToggleUI(newState);
+        }
+
+        async function loadPersonality() {
+            const { data } = await supabaseClient
+                .from('bot_settings')
+                .select('personality_mode, custom_prompt')
+                .eq('id', 1)
+                .single();
+            
+            if (data?.personality_mode) {
+                document.getElementById('personalitySelect').value = data.personality_mode;
+                if (data.personality_mode === 'custom') {
+                    document.getElementById('customPrompt').style.display = 'block';
+                    document.getElementById('customPrompt').value = data.custom_prompt || '';
+                }
+            }
+        }
+
+        function changePersonality() {
+            const mode = document.getElementById('personalitySelect').value;
+            if (mode === 'custom') {
+                document.getElementById('customPrompt').style.display = 'block';
+            } else {
+                document.getElementById('customPrompt').style.display = 'none';
+            }
+        }
+
+        async function savePersonality() {
+            const mode = document.getElementById('personalitySelect').value;
+            const customPrompt = document.getElementById('customPrompt').value;
+            
+            await supabaseClient
+                .from('bot_settings')
+                .update({ 
+                    personality_mode: mode, 
+                    custom_prompt: customPrompt,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', 1);
+            
+            alert('✅ Personality saved!');
+        }
+
+        async function loadMessages() {
+            const { data } = await supabaseClient
+                .from('messages')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(30);
+            
+            const log = document.getElementById('msgLog');
+            
+            if (!data || data.length === 0) {
+                log.innerHTML = '<p style="color:#666;">No messages yet.</p>';
+                return;
+            }
+            
+            log.innerHTML = data.map(function(m) {
+                const time = new Date(m.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                const msgClass = m.direction === 'incoming' ? 'msg-in' : 'msg-out';
+                const sender = m.sender.includes('@') ? m.sender.split('@')[0] : m.sender;
+                return `<div class="msg-item">
+                    <span class="${msgClass}">${m.direction === 'incoming' ? '📩' : '🤖'} ${sender}:</span> 
+                    ${m.text.substring(0, 100)}
+                    <br><span class="msg-time">${time}</span>
+                </div>`;
+            }).join('');
+        }
+    </script>
+</body>
+</html>
